@@ -75,11 +75,11 @@ if __name__ == '__main__':
 
     main(
         15,
-        # random_tour,
+        random_tour,
         # greedy_tour,
-        # dfs,
-        branch_and_bound,
-        branch_and_bound_smart,
+        dfs,
+        # branch_and_bound,
+        # branch_and_bound_smart,
         euclidean=True,
         reduction=0.2,
         normal=False,
