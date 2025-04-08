@@ -309,6 +309,8 @@ class DFS_Solver:
                     if score < self.BSSF:
                         self.BSSF = score
 
+                        print(f"Found a new best solution: {visited} with score {score}")
+
                         self.stats.append(SolutionStats(
                             tour=visited,
                             score=score,
@@ -399,22 +401,22 @@ class DFS_Solver:
         ) -> float:
 
 
-        exited_nodes = visited[:-1]  # Exclude current node
-        entered_nodes = visited[1:] + [edge_index] # Account for not entering the current node again
+        # exited_nodes = visited[:-1]  # Exclude current node
+        # entered_nodes = visited[1:] + [edge_index] # Account for not entering the current node again
 
+        curr_node = visited[-1]  # The last node in the visited list
+        next_node = edge_index  # The node we are testing to enter
 
         # Make a copy of the parent matrix
         curr_rcm = copy_matrix(parent_rcm)
 
-        # Set the diagonal to inf
-        for i in range(len(curr_rcm)):
-            curr_rcm[i][i] = math.inf
+        
+        self.nullify_row(curr_rcm, curr_node)  # Nullify the row of the current node
 
+        self.nullify_column(curr_rcm, next_node)  # Nullify the column of the edge index
 
-        for node in exited_nodes:
-            self.nullify_row(curr_rcm, node)
-        for node in entered_nodes:
-            self.nullify_column(curr_rcm, node)
+        # Nullify the column of the starting node to prevent premature loops
+        curr_rcm[next_node][visited[0]] = math.inf  
 
         # # Infinity out the rows of the exited nodes
         # for i in range(len(rcm)):
@@ -430,15 +432,23 @@ class DFS_Solver:
         
         reduced_matrix, reduction_cost = self.reduce_cost_matrix(curr_rcm)
 
-        print(f"Reduced Cost Matrix for {visited} -> {edge_index} :")
-        display_graph(curr_rcm)
-        print(f"Reduction Cost: {reduction_cost}")
-        print()
-
         # Add the cost of the reduced cost matrix + cost to parent + cost to current node
         # return self.rcm_initial_cost + reduction_cost + score_tour(visited, self.edges) + self.edges[visited[-1]][edge_index]
-        edge_cost = self.edges[visited[-1]][edge_index]
+        edge_cost = self.edges[curr_node][next_node] # Gets the cost of the single, current, edge
         lower_bound = parent_lower_bound + edge_cost + reduction_cost
+
+        # (Optional) Print debugging information if needed:
+        print(f"Transition: {visited} -> {edge_index}")
+        print(f"Original edge cost: {edge_cost}")
+        print(f"Parent LB: {parent_lower_bound}")
+        print(f"Reduction cost incurred: {reduction_cost}")
+        print(f"New lower bound: {lower_bound}")
+        print("New Reduced Matrix:")
+        display_graph(reduced_matrix)
+        print()
+
+        
+
         return lower_bound, reduced_matrix
     
     def nullify_row(self, matrix: list[list[float]], row: int):
