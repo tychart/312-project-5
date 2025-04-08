@@ -171,7 +171,7 @@ class DFS_Solver:
         self.n_nodes_expanded = 0
         self.n_nodes_pruned = 0
         self.cut_tree = CutTree(len(edges))
-        self.reduced_cost_matrix, self.rcm_initial_cost = self.generate_initial_reduced_cost_matrix()
+        
 
     def dfs_solve(self) -> list[SolutionStats]:
         """
@@ -218,7 +218,9 @@ class DFS_Solver:
             self.BSSF = math.inf
         self.BSSF = math.inf
 
-        self.branch_and_bound_recursive(0, [])
+        inital_reduced_cost_matrix, initial_rcm_initial_cost = self.generate_initial_reduced_cost_matrix()
+
+        self.branch_and_bound_recursive(0, inital_reduced_cost_matrix, initial_rcm_initial_cost, [])
 
         if len(self.stats) == 0:
             if self.BSSF != math.inf:
@@ -280,7 +282,12 @@ class DFS_Solver:
 
             self.dfs_recursive(edge_index, visited.copy())
     
-    def branch_and_bound_recursive(self, currnode: int, visited: list):
+    def branch_and_bound_recursive(self, 
+                                currnode: int,
+                                parent_rcm: list[list[float]],  
+                                parent_lower_bound: float,          
+                                visited: list[int]):
+
         visited.append(currnode)
         self.n_nodes_expanded += 1
         
@@ -322,13 +329,17 @@ class DFS_Solver:
                 self.cut_tree.cut(visited)
                 continue
 
-            lower_bound = self.calculate_reduced_cost_matrix(visited, edge_index)
-            if lower_bound >= self.BSSF:
+
+
+            curr_lower_bound, curr_rcm = self.calculate_reduced_cost_matrix(parent_rcm, parent_lower_bound, visited, edge_index)
+
+
+            if curr_lower_bound >= self.BSSF:
                 self.n_nodes_pruned += 1
                 self.cut_tree.cut(visited)
                 continue
 
-            self.branch_and_bound_recursive(edge_index, visited.copy())
+            self.branch_and_bound_recursive(edge_index, curr_rcm, curr_lower_bound, visited.copy())
 
     def generate_initial_reduced_cost_matrix(self) -> list[list[float]]:
         """
@@ -354,72 +365,89 @@ class DFS_Solver:
         return rcm, total_cost
 
     def reduce_cost_matrix(self, matrix: list[list[float]]) -> list[list[float]]:
-        # n = len(self.edges)
-        # reduction_cost = 0
 
-        total_reduction = 0
-        while True:
-            # Row reduction
-            row_reduction = 0
-            for row in matrix:
-                min_val = min(row)
-                if min_val != math.inf and min_val != 0:
-                    row_reduction += min_val
-                    row[:] = [x - min_val if x != math.inf else x for x in row]
-            
-            # Column reduction
-            col_reduction = 0
-            for j in range(len(matrix[0])):
-                col = [row[j] for row in matrix]
-                min_val = min(col)
-                if min_val != math.inf and min_val != 0:
-                    col_reduction += min_val
-                    for i in range(len(matrix)):
-                        if matrix[i][j] != math.inf:
-                            matrix[i][j] -= min_val
-            
-            total_reduction += row_reduction + col_reduction
-            
-            # Stop when no more reductions possible
-            if row_reduction + col_reduction == 0:
-                break
+        n = len(self.edges)
+        reduction_cost = 0
 
-        return matrix, total_reduction
+        # Make sure there is a 0 in every row
+        for i in range(n):
+            min_value = min(matrix[i])
+            if min_value != 0 and min_value != math.inf:
+                min_value = min_value
+                reduction_cost += min_value
+                for j in range(n):
+                    if matrix[i][j] != math.inf:
+                        matrix[i][j] -= min_value
+        
+        # Make sure there is a 0 in every column
+        for j in range(n):
+            min_value = min([row[j] for row in matrix])
+            if min_value != 0 and min_value != math.inf:
+                reduction_cost += min_value
+                for i in range(n):
+                    if matrix[i][j] != math.inf:
+                        matrix[i][j] -= min_value
+            
+        return matrix, reduction_cost
 
-    def calculate_reduced_cost_matrix(self, visited: list[int], edge_index: int) -> float:
+    def calculate_reduced_cost_matrix(
+            self, 
+            parent_rcm: list[list[float]], 
+            parent_lower_bound: float, 
+            visited: list[int], 
+            edge_index: int
+        ) -> float:
+
+
         exited_nodes = visited[:-1]  # Exclude current node
         entered_nodes = visited[1:] + [edge_index] # Account for not entering the current node again
 
 
-        # Make a copy of the edges matrix
-        rcm = [[float(item) for item in inner_list] for inner_list in self.edges]
+        # Make a copy of the parent matrix
+        curr_rcm = copy_matrix(parent_rcm)
 
         # Set the diagonal to inf
-        for i in range(len(rcm)):
-            rcm[i][i] = math.inf
+        for i in range(len(curr_rcm)):
+            curr_rcm[i][i] = math.inf
 
-        # Infinity out the rows of the exited nodes
-        for i in range(len(rcm)):
-            if i in exited_nodes:
-                for j in range(len(rcm)):
-                    rcm[i][j] = math.inf
-        
-        # Infinity out the columns of the entered nodes
-        for j in range(len(rcm)):
-            if j in entered_nodes:
-                for i in range(len(rcm)):
-                    rcm[i][j] = math.inf
-        
-        rcm, reduction_cost = self.reduce_cost_matrix(rcm)
 
-        print("Reduced Cost Matrix:")
-        display_graph(rcm)
+        for node in exited_nodes:
+            self.nullify_row(curr_rcm, node)
+        for node in entered_nodes:
+            self.nullify_column(curr_rcm, node)
+
+        # # Infinity out the rows of the exited nodes
+        # for i in range(len(rcm)):
+        #     if i in exited_nodes:
+        #         for j in range(len(rcm)):
+        #             rcm[i][j] = math.inf
+        
+        # # Infinity out the columns of the entered nodes
+        # for j in range(len(rcm)):
+        #     if j in entered_nodes:
+        #         for i in range(len(rcm)):
+        #             rcm[i][j] = math.inf
+        
+        reduced_matrix, reduction_cost = self.reduce_cost_matrix(curr_rcm)
+
+        print(f"Reduced Cost Matrix for {visited} -> {edge_index} :")
+        display_graph(curr_rcm)
         print(f"Reduction Cost: {reduction_cost}")
         print()
 
         # Add the cost of the reduced cost matrix + cost to parent + cost to current node
         # return self.rcm_initial_cost + reduction_cost + score_tour(visited, self.edges) + self.edges[visited[-1]][edge_index]
-        return reduction_cost + score_tour(visited, self.edges)
+        edge_cost = self.edges[visited[-1]][edge_index]
+        lower_bound = parent_lower_bound + edge_cost + reduction_cost
+        return lower_bound, reduced_matrix
+    
+    def nullify_row(self, matrix: list[list[float]], row: int):
+        for j in range(len(matrix)):
+            matrix[row][j] = math.inf
+
+    def nullify_column(self, matrix: list[list[float]], col: int):
+        for i in range(len(matrix)):
+            matrix[i][col] = math.inf
 
 def dfs(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
     dfs_solver = DFS_Solver(edges, timer)
@@ -486,7 +514,17 @@ def branch_and_bound_smart(edges: list[list[float]], timer: Timer) -> list[Solut
 
 
 
+def copy_matrix(matrix: list[list[float]]) -> list[list[float]]:
+    """
+    Creates a deep copy of a 2D list (matrix).
 
+    Args:
+        matrix: A 2D list representing the matrix to be copied.
+
+    Returns:
+        A deep copy of the input matrix.
+    """
+    return [row[:] for row in matrix]
 
 
 
