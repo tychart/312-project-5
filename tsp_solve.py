@@ -199,7 +199,8 @@ class DFS_Solver:
                 self.cut_tree.fraction_leaves_covered()
             )]
         
-        return self.stats
+        # return [self.stats[-1]]
+        return [self.stats[-1]]
     
     def branch_and_bound_solve(self) -> list[SolutionStats]:
         """
@@ -247,7 +248,7 @@ class DFS_Solver:
         
         for edge_index in range(0, len(self.edges[currnode])):
             if self.edges[currnode][edge_index] == math.inf:
-                self.n_nodes_pruned += 1
+                # self.n_nodes_pruned += 1
                 continue
 
             if edge_index == visited[0]: # Evaluating the path to the starting node
@@ -268,16 +269,11 @@ class DFS_Solver:
                             fraction_leaves_covered=self.cut_tree.fraction_leaves_covered()
                         ))
                         continue
-                self.n_nodes_pruned += 1
+                # self.n_nodes_pruned += 1
                 continue
                 
             if edge_index in visited:
-                self.n_nodes_pruned += 1
-                continue
-            
-            curr_rcm = self.calculate_reduced_cost_matrix(visited, edge_index)
-            if curr_rcm < self.BSSF:
-                self.n_nodes_pruned += 1
+                # self.n_nodes_pruned += 1
                 continue
 
             self.dfs_recursive(edge_index, visited.copy())
@@ -336,6 +332,7 @@ class DFS_Solver:
             curr_lower_bound, curr_rcm = self.calculate_reduced_cost_matrix(parent_rcm, parent_lower_bound, visited, edge_index)
 
 
+            # if curr_lower_bound >= self.BSSF:
             if curr_lower_bound >= self.BSSF:
                 self.n_nodes_pruned += 1
                 self.cut_tree.cut(visited)
@@ -416,7 +413,9 @@ class DFS_Solver:
         self.nullify_column(curr_rcm, next_node)  # Nullify the column of the edge index
 
         # Nullify the column of the starting node to prevent premature loops
-        curr_rcm[next_node][visited[0]] = math.inf  
+        # curr_rcm[next_node][visited[0]] = math.inf  
+
+        curr_rcm[next_node][curr_node] = math.inf  # Nullify so it can't go back
 
         # # Infinity out the rows of the exited nodes
         # for i in range(len(rcm)):
@@ -434,7 +433,7 @@ class DFS_Solver:
 
         # Add the cost of the reduced cost matrix + cost to parent + cost to current node
         # return self.rcm_initial_cost + reduction_cost + score_tour(visited, self.edges) + self.edges[visited[-1]][edge_index]
-        edge_cost = self.edges[curr_node][next_node] # Gets the cost of the single, current, edge
+        edge_cost = parent_rcm[curr_node][next_node] # Gets the cost of the single, current, edge
         lower_bound = parent_lower_bound + edge_cost + reduction_cost
 
         # (Optional) Print debugging information if needed:
