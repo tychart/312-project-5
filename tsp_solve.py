@@ -5,6 +5,9 @@ from tsp_core import Tour, SolutionStats, Timer, score_tour, Solver
 from tsp_cuttree import CutTree
 from math import inf
 
+
+
+
 def random_tour(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
     stats = []
     n_nodes_expanded = 0
@@ -54,7 +57,105 @@ def random_tour(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
 
 
 def greedy_tour(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
-    return []
+    display_graph(edges)
+
+    greedy_solver = Greedy_Solver(edges, timer)
+    stats = greedy_solver.solve()
+    pretty_print_solution_stats(stats)
+ 
+    
+    return stats
+
+
+
+class Greedy_Solver:
+    def __init__(self, edges: list[list[float]], timer: Timer):
+        self.edges = edges
+        self.timer = timer
+        self.stats = []
+        # self.BSSF = math.inf
+        self.n_nodes_expanded = 0
+        self.n_nodes_pruned = 0
+        self.cut_tree = CutTree(len(edges))
+
+    def solve(self) -> list[SolutionStats]:
+
+        for nodeindex in range(len(self.edges)):
+            if self.timer.time_out():
+                return
+            self.greedy_helper([], nodeindex)
+        return self.stats
+
+        
+    def greedy_helper(self, visited: list[int], currnode: int):
+        if self.timer.time_out():
+            self.n_nodes_pruned += 1
+            self.cut_tree.cut(visited)
+            return False
+        if min(self.edges[currnode]) == math.inf:
+            self.n_nodes_pruned += 1
+            self.cut_tree.cut(visited)
+            return False
+        
+        self.n_nodes_expanded += 1
+        visited.append(currnode)
+        nextnode = find_min_unvisited(self.edges[currnode], visited)
+        
+        if nextnode is None:
+            if len(visited) == len(self.edges) and self.edges[currnode][visited[0]] != math.inf:
+                # Complete path was found
+                
+                is_better = False
+
+                # Check if the path is better than the previous solution found
+                # (As per the instructions, althrough I have no idea why)
+                if len(self.stats) > 0:
+                    is_better = score_tour(visited, self.edges) < self.stats[-1].score
+                
+                if is_better or len(self.stats) == 0:
+                    self.stats.append(SolutionStats(
+                        tour=visited,
+                        score=score_tour(visited, self.edges),
+                        time=self.timer.time(),
+                        max_queue_size=1,
+                        n_nodes_expanded=self.n_nodes_expanded,
+                        n_nodes_pruned=self.n_nodes_pruned,
+                        n_leaves_covered=self.cut_tree.n_leaves_cut(),
+                        fraction_leaves_covered=self.cut_tree.fraction_leaves_covered()
+                    ))
+                    return True
+            self.n_nodes_pruned += 1
+            self.cut_tree.cut(visited)
+            return False
+        return self.greedy_helper(visited, nextnode)
+
+def find_min_unvisited(edges_list: list[float], visited: list[int]) -> int | None:
+    """
+    Finds the minimum float in a list of edges that is not present in the
+    already_visited list.
+
+    Args:
+        edges_list: A list of float values representing edges.
+        visited: A list of float values that have already been visited.
+
+    Returns:
+        The minimum float from the 'edges' list that is not in 'already_visited',
+        or None if all edges have been visited or the 'edges' list is empty.
+    """
+    min_unvisited = float('inf')
+    min_index = -1
+    found = False
+
+    for index in range(len(edges_list)):
+        if edges_list[index] < min_unvisited and index not in visited:
+            min_unvisited = edges_list[index]
+            min_index = index
+            found = True
+
+    if found:
+        return min_index
+    else:
+        return None
 
 
 class DFS_Solver:
@@ -62,19 +163,17 @@ class DFS_Solver:
     Solves the TSP using a depth-first search approach.
     """
 
-    def __init__(self, timer: Timer):
-        """
-        Initializes the object with the given attributes.
-
-        Args:
-            attribute1: Description of attribute1.
-            attribute2: Description of attribute2.
-        """
+    def __init__(self, edges: list[list[float]], timer: Timer):
+        self.edges = edges
         self.timer = timer
         self.stats = []
         self.BSSF = math.inf
+        self.n_nodes_expanded = 0
+        self.n_nodes_pruned = 0
+        self.cut_tree = CutTree(len(edges))
+        self.reduced_cost_matrix, self.rcm_initial_cost = self.generate_initial_reduced_cost_matrix()
 
-    def solve(self, edges: list[list[float]]) -> list[SolutionStats]:
+    def dfs_solve(self) -> list[SolutionStats]:
         """
         Solves the TSP using depth-first search.
 
@@ -84,69 +183,268 @@ class DFS_Solver:
         # Add the code for solving the TSP here
 
         currnode = 0 # Index of Starting Node
-        stack = []
-        stack.append(currnode) # Starting Node
-        cost = 0
-        visited = {}
-        visited.add(currnode) # Starting Node
+        visited = []
 
-        self.dfs_recursive(edges, currnode, visited, stack, cost)
+        self.dfs_recursive(currnode, visited.copy())
 
-        pass
-
-    def dfs_recursive(self, edges: list[list[float]], currnode: int, visited: set, stack: list, cost: float):
-        """
-        A brief description of what this method does.
-
-        Args:
-            parameter1: Description of parameter1.
-        """
+        if len(self.stats) == 0:
+                return [SolutionStats(
+                [],
+                math.inf,
+                self.timer.time(),
+                1,
+                self.n_nodes_expanded,
+                self.n_nodes_pruned,
+                self.cut_tree.n_leaves_cut(),
+                self.cut_tree.fraction_leaves_covered()
+            )]
         
-        for edge_index in range(0, len(edges[currnode])):
-            if edges[currnode][edge_index] == math.inf:
+        return self.stats
+    
+    def branch_and_bound_solve(self) -> list[SolutionStats]:
+        """
+        Solves the TSP using branch and bound.
+
+        Returns:
+            A list of SolutionStats objects containing the results.
+        """
+
+        greedy_solver = Greedy_Solver(self.edges, self.timer)
+        greedy_stats = greedy_solver.solve()
+
+        if len(greedy_stats) != 0:
+            self.BSSF = greedy_stats[-1].score
+        else:
+            self.BSSF = math.inf
+        self.BSSF = math.inf
+
+        self.branch_and_bound_recursive(0, [])
+
+        if len(self.stats) == 0:
+            if self.BSSF != math.inf:
+                return [greedy_stats[-1]]
+            return [SolutionStats(
+                [],
+                math.inf,
+                self.timer.time(),
+                1,
+                self.n_nodes_expanded,
+                self.n_nodes_pruned,
+                self.cut_tree.n_leaves_cut(),
+                self.cut_tree.fraction_leaves_covered()
+            )]
+
+        return self.stats
+
+
+
+    def dfs_recursive(self, currnode: int, visited: list):
+
+        visited.append(currnode)
+        self.n_nodes_expanded += 1
+        
+        for edge_index in range(0, len(self.edges[currnode])):
+            if self.edges[currnode][edge_index] == math.inf:
+                self.n_nodes_pruned += 1
                 continue
 
-            if edges[currnode][edge_index] == 0:
-                if len(stack) == len(edges): # Complete path was found
+            if edge_index == visited[0]: # Evaluating the path to the starting node
+                if len(visited) == len(self.edges): # Complete path was found
                     # Check if the path is better than the current best
-                    if cost < self.BSSF:
-                        self.BSSF = cost
-
-                        path = stack.copy()
+                    score = score_tour(visited, self.edges)
+                    if score < self.BSSF:
+                        self.BSSF = score
 
                         self.stats.append(SolutionStats(
-                            tour=path,
-                            score=cost,
+                            tour=visited,
+                            score=score,
                             time=self.timer.time(),
                             max_queue_size=1,
-                            n_nodes_expanded=n_nodes_expanded,
-                            n_nodes_pruned=n_nodes_pruned,
-                            n_leaves_covered=cut_tree.n_leaves_cut(),
-                            fraction_leaves_covered=cut_tree.fraction_leaves_covered()
+                            n_nodes_expanded=self.n_nodes_expanded,
+                            n_nodes_pruned=self.n_nodes_pruned,
+                            n_leaves_covered=self.cut_tree.n_leaves_cut(),
+                            fraction_leaves_covered=self.cut_tree.fraction_leaves_covered()
                         ))
+                        continue
+                self.n_nodes_pruned += 1
                 continue
                 
             if edge_index in visited:
+                self.n_nodes_pruned += 1
                 continue
-            self.dfs_recursive(edges, edge_index, visited, stack, cost + edges[currnode][edge_index])
             
+            curr_rcm = self.calculate_reduced_cost_matrix(visited, edge_index)
+            if curr_rcm < self.BSSF:
+                self.n_nodes_pruned += 1
+                continue
 
-        pass  # 'pass' is a placeholder, replace it with your code
+            self.dfs_recursive(edge_index, visited.copy())
+    
+    def branch_and_bound_recursive(self, currnode: int, visited: list):
+        visited.append(currnode)
+        self.n_nodes_expanded += 1
+        
+        for edge_index in range(0, len(self.edges[currnode])):
+            if self.timer.time_out():
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                return False
+            
+            if self.edges[currnode][edge_index] == math.inf:
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                continue
 
-    # Add more methods here if needed
+            if edge_index == visited[0]: # Evaluating the path to the starting node
+                if len(visited) == len(self.edges): # Complete path was found
+                    # Check if the path is better than the current best
+                    score = score_tour(visited, self.edges)
+                    if score < self.BSSF:
+                        self.BSSF = score
 
+                        self.stats.append(SolutionStats(
+                            tour=visited,
+                            score=score,
+                            time=self.timer.time(),
+                            max_queue_size=1,
+                            n_nodes_expanded=self.n_nodes_expanded,
+                            n_nodes_pruned=self.n_nodes_pruned,
+                            n_leaves_covered=self.cut_tree.n_leaves_cut(),
+                            fraction_leaves_covered=self.cut_tree.fraction_leaves_covered()
+                        ))
+                        continue
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                continue
+                
+            if edge_index in visited:
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                continue
+
+            lower_bound = self.calculate_reduced_cost_matrix(visited, edge_index)
+            if lower_bound >= self.BSSF:
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                continue
+
+            self.branch_and_bound_recursive(edge_index, visited.copy())
+
+    def generate_initial_reduced_cost_matrix(self) -> list[list[float]]:
+        """
+        Generates the initial reduced cost matrix from the edges.
+
+        Returns:
+            A list of lists representing the reduced cost matrix.
+        """
+        # starting_cost = 0
+        n = len(self.edges)
+        rcm = [[float(item) for item in inner_list] for inner_list in self.edges]
+
+        # Set the diagonal to inf
+        for i in range(n):
+            rcm[i][i] = math.inf
+
+        rcm, total_cost = self.reduce_cost_matrix(rcm)
+
+        print("Initial Reduced Cost Matrix:")
+        display_graph(rcm)
+        print(f"Total Cost: {total_cost}")
+        print()
+        return rcm, total_cost
+
+    def reduce_cost_matrix(self, matrix: list[list[float]]) -> list[list[float]]:
+        # n = len(self.edges)
+        # reduction_cost = 0
+
+        total_reduction = 0
+        while True:
+            # Row reduction
+            row_reduction = 0
+            for row in matrix:
+                min_val = min(row)
+                if min_val != math.inf and min_val != 0:
+                    row_reduction += min_val
+                    row[:] = [x - min_val if x != math.inf else x for x in row]
+            
+            # Column reduction
+            col_reduction = 0
+            for j in range(len(matrix[0])):
+                col = [row[j] for row in matrix]
+                min_val = min(col)
+                if min_val != math.inf and min_val != 0:
+                    col_reduction += min_val
+                    for i in range(len(matrix)):
+                        if matrix[i][j] != math.inf:
+                            matrix[i][j] -= min_val
+            
+            total_reduction += row_reduction + col_reduction
+            
+            # Stop when no more reductions possible
+            if row_reduction + col_reduction == 0:
+                break
+
+        return matrix, total_reduction
+
+    def calculate_reduced_cost_matrix(self, visited: list[int], edge_index: int) -> float:
+        exited_nodes = visited[:-1]  # Exclude current node
+        entered_nodes = visited[1:] + [edge_index] # Account for not entering the current node again
+
+
+        # Make a copy of the edges matrix
+        rcm = [[float(item) for item in inner_list] for inner_list in self.edges]
+
+        # Set the diagonal to inf
+        for i in range(len(rcm)):
+            rcm[i][i] = math.inf
+
+        # Infinity out the rows of the exited nodes
+        for i in range(len(rcm)):
+            if i in exited_nodes:
+                for j in range(len(rcm)):
+                    rcm[i][j] = math.inf
+        
+        # Infinity out the columns of the entered nodes
+        for j in range(len(rcm)):
+            if j in entered_nodes:
+                for i in range(len(rcm)):
+                    rcm[i][j] = math.inf
+        
+        rcm, reduction_cost = self.reduce_cost_matrix(rcm)
+
+        print("Reduced Cost Matrix:")
+        display_graph(rcm)
+        print(f"Reduction Cost: {reduction_cost}")
+        print()
+
+        # Add the cost of the reduced cost matrix + cost to parent + cost to current node
+        # return self.rcm_initial_cost + reduction_cost + score_tour(visited, self.edges) + self.edges[visited[-1]][edge_index]
+        return reduction_cost + score_tour(visited, self.edges)
 
 def dfs(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
-    dfs_solver = DFS_Solver(timer)
+    dfs_solver = DFS_Solver(edges, timer)
     display_graph(edges)
-    return []
+
+    stats = dfs_solver.dfs_solve()
+
+    pretty_print_solution_stats(stats)
+
+    # return [stats[-1]]
+    return stats
+
     # return dfs_solver.solve(edges)
 
 
 def branch_and_bound(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
     # set the diagonal to inf before reducing matrices
-    for i in range(len(edges)): edges[i][i] = inf  
-    return []
+    # for i in range(len(edges)): edges[i][i] = inf  
+
+    branch_and_bound_solver = DFS_Solver(edges, timer)
+    display_graph(edges)
+    stats = branch_and_bound_solver.branch_and_bound_solve()
+    pretty_print_solution_stats(stats)
+
+    return stats
 
 """
 For branch and bound lower bound, usining the reduced cost matrix:
@@ -237,6 +535,30 @@ def display_graph(edges: list[list[float]]):
             else:
                 row_str += f"{cost:<{max_width + 1}.1f}" # Adjust precision as needed
         print(row_str)
+
+def pretty_print_solution_stats(solution_stats_list: list[SolutionStats]):
+    """
+    Pretty prints a list of SolutionStats objects.
+
+    Args:
+        solution_stats_list: A list of SolutionStats namedtuples.
+    """
+    if not solution_stats_list:
+        print("No solution statistics to display.")
+        return
+
+    for i, stats in enumerate(solution_stats_list):
+        print(f"--- Solution {i + 1} ---")
+        print(f"  Tour: {stats.tour}")
+        print(f"  Score: {stats.score:.4f}")  # Format score to 4 decimal places
+        print(f"  Time: {stats.time:.6f} seconds") # Format time to 6 decimal places
+        print(f"  Max Queue Size: {stats.max_queue_size}")
+        print(f"  Nodes Expanded: {stats.n_nodes_expanded}")
+        print(f"  Nodes Pruned: {stats.n_nodes_pruned}")
+        print(f"  Leaves Covered: {stats.n_leaves_covered}")
+        print(f"  Fraction Leaves Covered: {stats.fraction_leaves_covered:.4f}") # Format fraction
+        print()
+
 
 if __name__ == '__main__':
     # Example usage with a sample edges list
