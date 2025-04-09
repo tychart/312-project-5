@@ -217,11 +217,49 @@ class DFS_Solver:
             self.BSSF = greedy_stats[-1].score
         else:
             self.BSSF = math.inf
-        self.BSSF = math.inf
+        # self.BSSF = math.inf
 
         inital_reduced_cost_matrix, initial_rcm_initial_cost = self.generate_initial_reduced_cost_matrix()
 
         self.branch_and_bound_recursive(0, inital_reduced_cost_matrix, initial_rcm_initial_cost, [])
+
+        if len(self.stats) == 0:
+            if self.BSSF != math.inf:
+                return [greedy_stats[-1]]
+            return [SolutionStats(
+                [],
+                math.inf,
+                self.timer.time(),
+                1,
+                self.n_nodes_expanded,
+                self.n_nodes_pruned,
+                self.cut_tree.n_leaves_cut(),
+                self.cut_tree.fraction_leaves_covered()
+            )]
+
+        return self.stats
+    
+
+    def smart_branch_and_bound_solve(self) -> list[SolutionStats]:
+        """
+        Solves the TSP using smart branch and bound.
+
+        Returns:
+            A list of SolutionStats objects containing the results.
+        """
+
+        greedy_solver = Greedy_Solver(self.edges, self.timer)
+        greedy_stats = greedy_solver.solve()
+
+        if len(greedy_stats) != 0:
+            self.BSSF = greedy_stats[-1].score
+        else:
+            self.BSSF = math.inf
+        # self.BSSF = math.inf
+
+        inital_reduced_cost_matrix, initial_rcm_initial_cost = self.generate_initial_reduced_cost_matrix()
+
+        self.smart_branch_and_bound_recursive(0, inital_reduced_cost_matrix, initial_rcm_initial_cost, [])
 
         if len(self.stats) == 0:
             if self.BSSF != math.inf:
@@ -289,6 +327,7 @@ class DFS_Solver:
         
         for edge_index in range(0, len(self.edges[currnode])):
             if self.timer.time_out():
+                print("RAN OUT OF TIME!")
                 self.n_nodes_pruned += 1
                 self.cut_tree.cut(visited)
                 return False
@@ -339,6 +378,83 @@ class DFS_Solver:
                 continue
 
             self.branch_and_bound_recursive(edge_index, curr_rcm, curr_lower_bound, visited.copy())
+
+    def smart_branch_and_bound_recursive(self, 
+                                currnode: int,
+                                parent_rcm: list[list[float]],  
+                                parent_lower_bound: float,          
+                                visited: list[int]):
+
+        visited.append(currnode)
+        self.n_nodes_expanded += 1
+
+        edges_to_visit = self.edges[currnode]
+        sorted_edges_to_visit = sorted(range(len(edges_to_visit)), key=lambda i: edges_to_visit[i])
+        pruned_sorted_edges_to_visit = []
+
+        for sorted_edge_index in range(0, len(sorted_edges_to_visit) - 1):
+            if (
+                self.edges[currnode][sorted_edges_to_visit[sorted_edge_index]] == math.inf or 
+                self.edges[currnode][sorted_edges_to_visit[sorted_edge_index]] == 0
+                ):
+                continue
+            pruned_sorted_edges_to_visit.append(sorted_edges_to_visit[sorted_edge_index])
+        
+        for edge_index in pruned_sorted_edges_to_visit:
+            if self.timer.time_out():
+                print("RAN OUT OF TIME!")
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                return False
+            
+            if self.edges[currnode][edge_index] == math.inf:
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                continue
+
+            if edge_index == visited[0]: # Evaluating the path to the starting node
+                if len(visited) == len(self.edges): # Complete path was found
+                    # Check if the path is better than the current best
+                    score = score_tour(visited, self.edges)
+                    if score < self.BSSF:
+                        self.BSSF = score
+
+                        print(f"Found a new best solution: {visited} with score {score}")
+
+                        self.stats.append(SolutionStats(
+                            tour=visited,
+                            score=score,
+                            time=self.timer.time(),
+                            max_queue_size=1,
+                            n_nodes_expanded=self.n_nodes_expanded,
+                            n_nodes_pruned=self.n_nodes_pruned,
+                            n_leaves_covered=self.cut_tree.n_leaves_cut(),
+                            fraction_leaves_covered=self.cut_tree.fraction_leaves_covered()
+                        ))
+                        continue
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                continue
+                
+            if edge_index in visited:
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                continue
+
+
+
+            curr_lower_bound, curr_rcm = self.calculate_reduced_cost_matrix(parent_rcm, parent_lower_bound, visited, edge_index)
+
+
+            # if curr_lower_bound >= self.BSSF:
+            if curr_lower_bound >= self.BSSF:
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                continue
+
+            self.smart_branch_and_bound_recursive(edge_index, curr_rcm, curr_lower_bound, visited.copy())
+
+
 
     def generate_initial_reduced_cost_matrix(self) -> list[list[float]]:
         """
@@ -436,15 +552,15 @@ class DFS_Solver:
         edge_cost = parent_rcm[curr_node][next_node] # Gets the cost of the single, current, edge
         lower_bound = parent_lower_bound + edge_cost + reduction_cost
 
-        # (Optional) Print debugging information if needed:
-        print(f"Transition: {visited} -> {edge_index}")
-        print(f"Original edge cost: {edge_cost}")
-        print(f"Parent LB: {parent_lower_bound}")
-        print(f"Reduction cost incurred: {reduction_cost}")
-        print(f"New lower bound: {lower_bound}")
-        print("New Reduced Matrix:")
-        display_graph(reduced_matrix)
-        print()
+        # # (Optional) Print debugging information if needed:
+        # print(f"Transition: {visited} -> {edge_index}")
+        # print(f"Original edge cost: {edge_cost}")
+        # print(f"Parent LB: {parent_lower_bound}")
+        # print(f"Reduction cost incurred: {reduction_cost}")
+        # print(f"New lower bound: {lower_bound}")
+        # print("New Reduced Matrix:")
+        # display_graph(reduced_matrix)
+        # print()
 
         
 
@@ -473,11 +589,12 @@ def dfs(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
 
 
 def branch_and_bound(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
-    # set the diagonal to inf before reducing matrices
-    # for i in range(len(edges)): edges[i][i] = inf  
+    print("====================================================")
+    print("Currently using the normal branch and bound solver")
+    print("====================================================")
 
     branch_and_bound_solver = DFS_Solver(edges, timer)
-    display_graph(edges)
+    # display_graph(edges)
     stats = branch_and_bound_solver.branch_and_bound_solve()
     pretty_print_solution_stats(stats)
 
@@ -515,7 +632,18 @@ For branch and bound lower bound, usining the reduced cost matrix:
 
 
 def branch_and_bound_smart(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
-    return []
+    print("====================================================")
+    print("Currently using the smart branch and bound solver")
+    print("====================================================")
+    
+    
+    smart_branch_and_bound_solver = DFS_Solver(edges, timer)
+    
+    # display_graph(edges)
+    stats = smart_branch_and_bound_solver.smart_branch_and_bound_solve()
+    pretty_print_solution_stats(stats)
+
+    return stats
 
 
 

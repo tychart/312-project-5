@@ -125,7 +125,53 @@ def test_branch_and_bound():
 
     assert bnb_score < greedy_score
 
+def test_branch_and_bound_smart():
+    """
+    Your Smart B&B algorithm should find a better answer
+    than your B&B algorithm in the same amount of time.
+    """
+
+    locations, edges = generate_network(
+        30,
+        euclidean=True,
+        reduction=0.2,
+        normal=False,
+        seed=312,
+    )
+
+    timer = Timer(20)
+    bnb_stats = branch_and_bound(edges, timer)
+    assert_valid_tours(edges, bnb_stats)
+    bnb_score = score_tour(bnb_stats[-1].tour, edges)
+
+    timer = Timer(20)
+    stats = branch_and_bound_smart(edges, timer)
+    assert_valid_tours(edges, stats)
+    smart_score = score_tour(stats[-1].tour, edges)
+
+    assert smart_score < bnb_score
+
+def my_test_branch_and_bound_smart():
+    graph = [
+        [0, 9, inf, 8, inf],
+        [inf, 0, 4, inf, 2],
+        [inf, 3, 0, 4, inf],
+        [inf, 6, 7, 0, 12],
+        [1, inf, inf, 10, 0]
+    ]
+    # timer = Timer(10)
+    timer = Timer(1000000000000)
+    stats = branch_and_bound_smart(graph, timer)
+    assert_valid_tours(graph, stats)
+
+    scores = {
+        tuple(stat.tour): stat.score
+        for stat in stats
+    }
+    # assert scores[0, 3, 2, 1, 4] == 21
+    # assert len(scores) == 1
 
 # test_greedy()
 # test_dfs()
-test_branch_and_bound()
+# my_test_branch_and_bound_smart()
+test_branch_and_bound_smart()
