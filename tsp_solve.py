@@ -57,11 +57,11 @@ def random_tour(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
 
 
 def greedy_tour(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
-    display_graph(edges)
+    # display_graph(edges)
 
     greedy_solver = Greedy_Solver(edges, timer)
     stats = greedy_solver.solve()
-    pretty_print_solution_stats(stats)
+    # pretty_print_solution_stats(stats)
  
     
     return stats
@@ -285,6 +285,12 @@ class DFS_Solver:
         self.n_nodes_expanded += 1
         
         for edge_index in range(0, len(self.edges[currnode])):
+            if self.timer.time_out():
+                print("RAN OUT OF TIME!")
+                self.n_nodes_pruned += 1
+                self.cut_tree.cut(visited)
+                return False
+            
             if self.edges[currnode][edge_index] == math.inf:
                 # self.n_nodes_pruned += 1
                 continue
@@ -473,10 +479,10 @@ class DFS_Solver:
 
         rcm, total_cost = self.reduce_cost_matrix(rcm)
 
-        print("Initial Reduced Cost Matrix:")
-        display_graph(rcm)
-        print(f"Total Cost: {total_cost}")
-        print()
+        # print("Initial Reduced Cost Matrix:")
+        # display_graph(rcm)
+        # print(f"Total Cost: {total_cost}")
+        # print()
         return rcm, total_cost
 
     def reduce_cost_matrix(self, matrix: list[list[float]]) -> list[list[float]]:
@@ -576,11 +582,11 @@ class DFS_Solver:
 
 def dfs(edges: list[list[float]], timer: Timer) -> list[SolutionStats]:
     dfs_solver = DFS_Solver(edges, timer)
-    display_graph(edges)
+    # display_graph(edges)
 
     stats = dfs_solver.dfs_solve()
 
-    pretty_print_solution_stats(stats)
+    # pretty_print_solution_stats(stats)
 
     # return [stats[-1]]
     return stats
@@ -596,7 +602,7 @@ def branch_and_bound(edges: list[list[float]], timer: Timer) -> list[SolutionSta
     branch_and_bound_solver = DFS_Solver(edges, timer)
     # display_graph(edges)
     stats = branch_and_bound_solver.branch_and_bound_solve()
-    pretty_print_solution_stats(stats)
+    # pretty_print_solution_stats(stats)
 
     return stats
 
@@ -641,7 +647,7 @@ def branch_and_bound_smart(edges: list[list[float]], timer: Timer) -> list[Solut
     
     # display_graph(edges)
     stats = smart_branch_and_bound_solver.smart_branch_and_bound_solve()
-    pretty_print_solution_stats(stats)
+    # pretty_print_solution_stats(stats)
 
     return stats
 
